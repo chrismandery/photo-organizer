@@ -1,0 +1,17 @@
+[package]
+name = "photo-organizer"
+description = "CLI tool for organizing photo collections written in Rust"
+readme = "README.md"
+authors = ["Christian Mandery <christian@mandery.ch>"]
+repository = "https://github.com/chrismandery/photo-organizer"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "po"
+path = "src/main.rs"
+
+[dependencies]
+anyhow = "1.0"
+clap = { version = "4.1", features = ["derive"] }
+sha2 = "0.10"
