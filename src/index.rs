@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -8,7 +9,8 @@ const INDEX_FILE_NAME: &str = "photo_organizer_index.json";
 
 #[derive(Deserialize, Serialize)]
 pub struct UserConfig {
-    file_naming_scheme: String
+    pub file_naming_scheme: String,
+    pub file_types: HashMap<String, Vec<String>>
 }
 
 #[derive(Deserialize, Serialize)]
@@ -28,7 +30,11 @@ impl Default for Index {
     fn default() -> Self {
         Index {
             user_config: UserConfig {
-                file_naming_scheme: String::from("%Y%m%d_%H%M%S_%{type}.%{fileextension}")  // TODO
+                file_naming_scheme: String::from("%Y%m%d_%H%M%S_%{type}.%{fileextension}"),  // TODO
+                file_types: HashMap::from([
+                    ("IMG".into(), vec!("jpg".into(), "jpeg".into(), "png".into())),
+                    ("VID".into(), vec!("mp4".into()))
+                ])
             },
             photos: vec!()
         }
@@ -62,6 +68,7 @@ pub fn read_index_file(root_dir: &Path) -> Result<Index> {
 
 /// Writes index file to given root directory.
 pub fn write_index_file(root_dir: &Path, index: &Index) -> Result<()> {
+    // TODO: Maybe sort filelist if necessary to make index file deterministic/stable for versioning with Git
     let filepath = root_dir.join(INDEX_FILE_NAME);
     let file = File::open(&filepath).with_context(|| format!("Could not open index file at {} for writing!", filepath.display()))?;
     let mut writer = BufWriter::new(file);
