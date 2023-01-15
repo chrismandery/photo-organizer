@@ -3,7 +3,7 @@ use clap::{Parser, Subcommand};
 use std::env::current_dir;
 use std::path::Path;
 
-use index::{Index, get_index_root_and_subdir, write_index_file};
+use index::{Index, get_index_root_and_subdir, read_index_file, write_index_file};
 
 mod checks;
 mod collection;
@@ -46,6 +46,9 @@ enum Command {
 
 /// Handles execution of all commands except the init command.
 fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
+    // Read index file
+    let index = read_index_file(root_dir)?;
+
     match args.command {
         Command::Check => {
             todo!();

@@ -39,7 +39,16 @@ impl Default for Index {
 /// the subdirectory (portion of the path from the root to the given directory). Returns Ok(None) is the given directory is not part of a
 /// photo collection.
 pub fn get_index_root_and_subdir(dir: &Path) -> Result<Option<(PathBuf, PathBuf)>> {
-    todo!();
+    for cur_dir in dir.ancestors() {
+        if cur_dir.join(INDEX_FILE_NAME).exists() {
+            // Index file found
+            let subdir = dir.strip_prefix(cur_dir)?.to_owned();
+            return Ok(Some((cur_dir.to_owned(), subdir)));
+        }
+    }
+
+    // No index file found
+    Ok(None)
 }
 
 /// Reads the index file for given root directory.
