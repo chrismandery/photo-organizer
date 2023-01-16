@@ -17,7 +17,7 @@ pub struct UserConfig {
 pub struct IndexEntry {
     filepath: String,
     orig_filename: String,
-    filehash: String  // TODO: Change type
+    filehash: String
 }
 
 #[derive(Deserialize, Serialize)]
