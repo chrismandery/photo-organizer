@@ -1,9 +1,11 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use std::collections::HashSet;
 use std::env::current_dir;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
-use index::{Index, get_index_root_and_subdir, read_index_file, write_index_file};
+use collection::{Photo, calc_photo_hash, scan_photo_collection};
+use index::{Index, IndexEntry, get_index_root_and_subdir, read_index_file, write_index_file};
 
 mod checks;
 mod collection;
@@ -46,23 +48,30 @@ enum Command {
 
 /// Handles execution of all commands except the init command.
 fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
-    // Read index file
-    let index = read_index_file(root_dir)?;
+    // Read index file and scan photo collection
+    let mut index = read_index_file(root_dir)?;
+    let mut index_changed = false;
+    let photos = scan_photo_collection(&index.user_config, root_dir)?;
 
     match args.command {
         Command::Check => {
             todo!();
         },
-        Command::Init => {},  // handled above
-        Command::List { recursive: bool }=> {
+        Command::Init => {},  // handled in main()
+        Command::List { recursive } => {
             todo!();
         },
-        Command::Rename { recursive: bool }=> {
-            todo!();
+        Command::Rename { recursive } => {
+            index_changed = rename_photos(root_dir, subdir, &mut index, &photos, recursive)?;
         },
         Command::Update => {
-            todo!();
+            index_changed = update_index(root_dir, &mut index, &photos)?;
         }
+    }
+
+    if index_changed {
+        write_index_file(root_dir, &index)?;
+        println!("Index file for {} has been updated.", root_dir.display());
     }
 
     Ok(())
@@ -97,4 +106,52 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+/// Renames the files in the given directory (and potentially subdirectories) to follow the naming scheme configured in the index. Returns
+/// whether the index has been changed by the function.
+fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool) -> Result<bool> {
+    todo!();
+}
+
+/// Updates the index entries with the actual stored photos, detecting new, renamed and deleted photos. Returns whether the index has been
+/// changed by the function.
+fn update_index(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Result<bool> {
+    // Create index data structures for faster matching of index and photos
+    let index_set: HashSet<PathBuf> = index.photos.iter().map(|p| p.filepath.clone()).collect();
+    let photos_set: HashSet<PathBuf> = photos.iter().map(|p| p.relative_path.clone()).collect();
+
+    // Check for photos in the index that do no longer exist and thus have been deleted or renamed
+    let deleted_photos_paths: HashSet<_> = index_set.difference(&photos_set).collect();
+    let deleted_photos: Vec<IndexEntry> = index.photos.iter().filter(|p| deleted_photos_paths.contains(&p.filepath)).cloned().collect();
+    index.photos.retain_mut(|p| !deleted_photos_paths.contains(&p.filepath));
+
+    // Check for new photos that are not part of the index yet
+    let added_photos_paths = photos_set.difference(&index_set);
+    let mut new_photo_found = false;
+
+    for added_photo in added_photos_paths {
+        new_photo_found = true;
+
+        // Hash photo
+        let hash = calc_photo_hash(&root_dir.join(added_photo))?;
+
+        let new_index_entry = if let Some(renamed_photo) = deleted_photos.iter().find(|p| p.filehash == hash) {
+            // Hash matches one of the deleted photos (this photo was just renamed)
+            let mut new_entry = renamed_photo.clone();
+            new_entry.filepath = added_photo.clone();
+            new_entry
+        } else {
+            // Hash not found in the deleted photos (this photo is new)
+            IndexEntry {
+                filepath: added_photo.clone(),
+                orig_filename: added_photo.file_name().unwrap_or_default().to_string_lossy().into(),
+                filehash: hash
+            }
+        };
+
+        index.photos.push(new_index_entry);
+    }
+
+    Ok(new_photo_found || !deleted_photos.is_empty())
 }

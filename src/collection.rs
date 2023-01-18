@@ -8,8 +8,9 @@ use walkdir::WalkDir;
 
 use crate::index::UserConfig;
 
+#[derive(Clone)]
 pub struct Photo {
-    relative_path: PathBuf
+    pub relative_path: PathBuf
 }
 
 /// Hashes the given file and returns the hash as a hex-encoded string.

@@ -7,23 +7,23 @@ use std::path::{Path, PathBuf};
 
 const INDEX_FILE_NAME: &str = "photo_organizer_index.json";
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct UserConfig {
     pub file_naming_scheme: String,
     pub file_types: HashMap<String, Vec<String>>
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct IndexEntry {
-    filepath: String,
-    orig_filename: String,
-    filehash: String
+    pub filepath: PathBuf,
+    pub orig_filename: String,
+    pub filehash: String
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Clone, Deserialize, Serialize)]
 pub struct Index {
-    user_config: UserConfig,
-    photos: Vec<IndexEntry>
+    pub user_config: UserConfig,
+    pub photos: Vec<IndexEntry>
 }
 
 impl Default for Index {
