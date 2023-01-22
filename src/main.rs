@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
 
+use checks::{check_for_duplicates, check_hashes, check_photo_naming};
 use collection::{Photo, calc_photo_hash, scan_photo_collection};
 use index::{Index, IndexEntry, get_index_root_and_subdir, read_index_file, write_index_file};
 
@@ -55,7 +56,16 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
 
     match args.command {
         Command::Check => {
-            todo!();
+            // Print warning is index is not up to date
+            let index_is_update_to_date = update_index(root_dir, &mut index.clone(), &photos)?;
+            if !index_is_update_to_date {
+                println!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
+            }
+
+            // Run all checks (TODO: should be configurable later)
+            check_for_duplicates(&index);
+            check_hashes(root_dir, &index);
+            check_photo_naming(&index);
         },
         Command::Init => {},  // handled in main()
         Command::List { recursive } => {
