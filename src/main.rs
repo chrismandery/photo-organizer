@@ -71,10 +71,11 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
             // Run all checks (TODO: should be configurable later)
             check_for_duplicates(&index);
             check_hashes(root_dir, &index);
-            check_photo_naming(&index);
+            check_photo_naming(root_dir, &index);
         },
         Command::Init => {},  // handled in main()
         Command::List { recursive } => {
+            dbg!(recursive);
             todo!();
         },
         Command::Rename { recursive } => {
@@ -128,6 +129,7 @@ fn main() -> Result<()> {
 /// whether the index has been changed by the function.
 fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool) -> Result<bool> {
     todo!();
+    // TODO: Ask for confirmation
 }
 
 /// Updates the index entries with the actual stored photos, detecting new, renamed and deleted photos. Returns whether the index has been

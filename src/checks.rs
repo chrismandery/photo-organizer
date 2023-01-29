@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 use std::path::Path;
 
-use crate::collection::calc_photo_hash;
+use crate::collection::{calc_photo_hash, get_canonical_photo_filename};
 use crate::index::{Index, IndexEntry};
 
 /// Checks for duplicates (according to the hash) among the photos that are part of the index. Returns whether duplicates have been found.
@@ -55,6 +55,23 @@ pub fn check_hashes(root_dir: &Path, index: &Index) -> bool {
 
 /// Checks whether all photos in the index are compliant with the naming scheme set in the index. Returns whether the name of any photo
 /// deviates from the naming scheme.
-pub fn check_photo_naming(index: &Index) -> bool {
-    false  // TODO: Implement later
+pub fn check_photo_naming(root_dir: &Path, index: &Index) -> bool {
+    let mut found_misnamed_file = false;
+
+    for photo in index.photos.iter() {
+        let maybe_cfn = get_canonical_photo_filename(&root_dir.join(&photo.filepath), &index.user_config);
+        match maybe_cfn {
+            Ok(cfn) => {
+                if cfn != photo.filepath.file_name().unwrap_or_default().to_string_lossy() {
+                    println!("{}: Should be named {}", photo.filepath.display(), cfn);
+                }
+            },
+            Err(e) => {
+                found_misnamed_file = true;
+                println!("Error while trying to determine correct filename for {}: {}", photo.filepath.display(), e);
+            }
+        }
+    }
+
+    found_misnamed_file
 }
