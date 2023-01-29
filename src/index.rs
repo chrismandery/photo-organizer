@@ -67,8 +67,10 @@ pub fn read_index_file(root_dir: &Path) -> Result<Index> {
 }
 
 /// Writes index file to given root directory.
-pub fn write_index_file(root_dir: &Path, index: &Index) -> Result<()> {
-    // TODO: Maybe sort filelist if necessary to make index file deterministic/stable for versioning with Git
+pub fn write_index_file(root_dir: &Path, index: &mut Index) -> Result<()> {
+    // Sort index file before writing to ensure file is stable for versioning it with Git
+    index.photos.sort_unstable_by_key(|e| e.filepath.clone());
+
     let filepath = root_dir.join(INDEX_FILE_NAME);
     let file = File::create(&filepath).with_context(|| format!("Could not open index file at {} for writing!", filepath.display()))?;
     let mut writer = BufWriter::new(file);

@@ -80,7 +80,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
     }
 
     if index_changed {
-        write_index_file(root_dir, &index)?;
+        write_index_file(root_dir, &mut index)?;
         println!("Index file for {} has been updated.", root_dir.display());
     }
 
@@ -102,7 +102,7 @@ fn main() -> Result<()> {
             },
             None => {
                 let wd = current_dir()?;
-                write_index_file(&wd, &Index::default())?;
+                write_index_file(&wd, &mut Index::default())?;
                 println!("Empty index file created for directory {}.", wd.display());
                 println!("Adjust configuration options in file if desired and then run the \"update\" command.");
             }
