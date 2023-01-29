@@ -57,8 +57,8 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
     match args.command {
         Command::Check => {
             // Print warning is index is not up to date
-            let index_is_update_to_date = update_index(root_dir, &mut index.clone(), &photos)?;
-            if !index_is_update_to_date {
+            let index_changed = update_index(root_dir, &mut index.clone(), &photos)?;
+            if index_changed {
                 println!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 

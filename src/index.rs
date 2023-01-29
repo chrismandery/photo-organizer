@@ -70,7 +70,7 @@ pub fn read_index_file(root_dir: &Path) -> Result<Index> {
 pub fn write_index_file(root_dir: &Path, index: &Index) -> Result<()> {
     // TODO: Maybe sort filelist if necessary to make index file deterministic/stable for versioning with Git
     let filepath = root_dir.join(INDEX_FILE_NAME);
-    let file = File::open(&filepath).with_context(|| format!("Could not open index file at {} for writing!", filepath.display()))?;
+    let file = File::create(&filepath).with_context(|| format!("Could not open index file at {} for writing!", filepath.display()))?;
     let mut writer = BufWriter::new(file);
     serde_json::to_writer_pretty(&mut writer, index)?;
     writer.flush()?;
