@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
@@ -12,7 +12,7 @@ const INDEX_FILE_NAME: &str = "photo_organizer_index.json";
 #[derive(Clone, Deserialize, Serialize)]
 pub struct UserConfig {
     pub file_naming_scheme: String,
-    pub file_types: HashMap<String, Vec<String>>
+    pub file_types: BTreeMap<String, Vec<String>>
 }
 
 #[derive(Clone, Deserialize, Serialize)]
@@ -32,8 +32,8 @@ impl Default for Index {
     fn default() -> Self {
         Index {
             user_config: UserConfig {
-                file_naming_scheme: String::from("%Y%m%d_%H%M%S_%{type}.%{fileextension}"),  // TODO
-                file_types: HashMap::from([
+                file_naming_scheme: String::from("%Y%m%d_%H%M%S_%{type}.%{fileextension}"),
+                file_types: BTreeMap::from([
                     ("IMG".into(), vec!("jpg".into(), "jpeg".into(), "png".into())),
                     ("VID".into(), vec!("mp4".into()))
                 ])
