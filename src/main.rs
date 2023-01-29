@@ -6,7 +6,7 @@ use std::path::{Path, PathBuf};
 
 use checks::{check_for_duplicates, check_hashes, check_photo_naming};
 use collection::{Photo, calc_photo_hash, scan_photo_collection};
-use index::{Index, IndexEntry, get_index_root_and_subdir, read_index_file, write_index_file};
+use index::{Index, IndexEntry, check_index_file_is_git_versioned, get_index_root_and_subdir, read_index_file, write_index_file};
 
 mod checks;
 mod collection;
@@ -53,6 +53,12 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
     let mut index = read_index_file(root_dir)?;
     let mut index_changed = false;
     let photos = scan_photo_collection(&index.user_config, root_dir)?;
+
+    // Check whether the index file is versioned using Git and hint user to do so if that is not the case
+    if args.command != Command::Init && !check_index_file_is_git_versioned(root_dir) {
+        println!("Warning: Index file in {} does not seem to be versioned using Git.", root_dir.display());
+        println!("It is recommended to setting up a Git repository for tracking changes of the index file.");
+    }
 
     match args.command {
         Command::Check => {

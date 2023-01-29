@@ -4,6 +4,8 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::process::Command;
+use std::str::from_utf8;
 
 const INDEX_FILE_NAME: &str = "photo_organizer_index.json";
 
@@ -37,6 +39,25 @@ impl Default for Index {
                 ])
             },
             photos: vec!()
+        }
+    }
+}
+
+/// Checks whether the index file in the given root directory is put under version control using Git. Return false if Git is not installed,
+/// no Git repository has been created, the index file is not versioned (determined using git ls-files) or any other error occured.
+pub fn check_index_file_is_git_versioned(root_dir: &Path) -> bool {
+    let res = Command::new("git")
+        .current_dir(root_dir)
+        .args(["ls-files"])
+        .output();
+
+    match res {
+        Ok(output) => {
+            output.status.success() &&
+                from_utf8(&output.stdout).map(|s| s == String::from(INDEX_FILE_NAME) + "\n").unwrap_or(false)
+        },
+        Err(_) => {
+            false
         }
     }
 }
