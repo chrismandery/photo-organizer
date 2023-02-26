@@ -1,12 +1,14 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use clap::{Parser, Subcommand};
 use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::env::current_dir;
+use std::fs::rename;
+use std::ffi::OsStr;
 use std::path::{Path, PathBuf};
 
 use checks::{check_for_duplicates, check_hashes, check_photo_naming};
-use collection::{Photo, calc_photo_hash, scan_photo_collection};
+use collection::{Photo, calc_photo_hash, get_canonical_photo_filename, scan_photo_collection};
 use index::{Index, IndexEntry, check_index_file_is_git_versioned, get_index_root_and_subdir, read_index_file, write_index_file};
 
 mod checks;
@@ -67,8 +69,8 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
     match args.command {
         Command::Check => {
             // Print warning is index is not up to date
-            let index_changed = update_index(root_dir, &mut index.clone(), &photos)?;
-            if index_changed {
+            let index_not_up_to_date = update_index(root_dir, &mut index.clone(), &photos)?;
+            if index_not_up_to_date {
                 warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
@@ -83,7 +85,19 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
             todo!();
         },
         Command::Rename { recursive } => {
-            index_changed = rename_photos(root_dir, subdir, &mut index, &photos, recursive)?;
+            // Print warning is index is not up to date
+            let index_not_up_to_date = update_index(root_dir, &mut index.clone(), &photos)?;
+            if index_not_up_to_date {
+                warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
+            }
+
+            let renamed_file_count = rename_photos(root_dir, subdir, &index, &photos, recursive, args.dry_run)?;
+
+            if renamed_file_count > 0 {
+                info!("{} photos have been renamed. Run \"update\" to update the index file.", renamed_file_count);
+            } else {
+                info!("No photos renamed.");
+            }
         },
         Command::Update => {
             index_changed = update_index(root_dir, &mut index, &photos)?;
@@ -91,8 +105,12 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
     }
 
     if index_changed {
-        write_index_file(root_dir, &mut index)?;
-        info!("Index file for {} has been updated.", root_dir.display());
+        if args.dry_run {
+            info!("Index file for {} would have been updated but changes not written (running in dry-run mode).", root_dir.display());
+        } else {
+            write_index_file(root_dir, &mut index)?;
+            info!("Index file for {} has been updated.", root_dir.display());
+        }
     } else {
         debug!("No changes, index file not being updated.");
     }
@@ -139,10 +157,58 @@ fn main() -> Result<()> {
 }
 
 /// Renames the files in the given directory (and potentially subdirectories) to follow the naming scheme configured in the index. Returns
-/// whether the index has been changed by the function.
-fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool) -> Result<bool> {
-    todo!();
-    // TODO: Ask for confirmation
+/// how many files have been renamed by the function.
+fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool, dry_run: bool) -> Result<usize> {
+    // TODO: Maybe ask for additional confirmation? (if not in dry-run mode)
+
+    // Get all files that should by renamed
+    let filepaths: Vec<PathBuf> = photos
+        .into_iter()
+        .filter(|photo| {
+            if recursive {
+                photo.relative_path.starts_with(subdir)
+            } else {
+                photo.relative_path.parent().map(|d| d == subdir).unwrap_or(false)
+            }
+        })
+        .map(|photo| photo.relative_path.clone())
+        .collect();
+
+    // Check for each file whether it should be renamed
+    let mut renamed_photo_count = 0;
+    for filepath in filepaths {
+        let full_old_path = root_dir.join(&filepath);
+
+        match get_canonical_photo_filename(&full_old_path, &index.user_config) {
+            Ok(canonical_name) => {
+                let cur_name = filepath.file_name().ok_or(anyhow!("Could not file component of photo path!"))?;
+                let canonical_name = PathBuf::from(&canonical_name);
+
+                // Rename is necessary if a photo does not already have its canonical name
+                if cur_name == canonical_name {
+                    debug!("{}: Rename not necessary", filepath.display());
+                } else {
+                    if dry_run {
+                        info!("{}: Would rename file to {} (running in dry-run mode)", filepath.display(), canonical_name.display());
+                    } else {
+                        info!("{}: Renaming file to {}", filepath.display(), canonical_name.display());
+
+                        let full_new_path = root_dir
+                            .join(filepath.parent().expect("Could not get directory component of photo path!"))
+                            .join(canonical_name);
+
+                        rename(full_old_path, full_new_path)?;
+                        renamed_photo_count += 1;
+                    }
+                }
+            },
+            Err(e) => {
+                warn!("{}: Could not process file - {}", filepath.display(), e);
+            }
+        }
+    }
+
+    Ok(renamed_photo_count)
 }
 
 /// Updates the index entries with the actual stored photos, detecting new, renamed and deleted photos. Returns whether the index has been

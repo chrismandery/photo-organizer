@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use chrono::prelude::*;
 use hex::encode;
 use sha2::{Digest, Sha256};
@@ -36,7 +36,35 @@ pub fn calc_photo_hash(filepath: &PathBuf) -> Result<String> {
 pub fn get_canonical_photo_filename(filepath: &PathBuf, user_config: &UserConfig) -> Result<String> {
     let exif_data = read_exif_data(filepath)?;
 
-    Ok("...".into())  // TODO
+    match exif_data.timestamp_local {
+        Some(timestamp_local) => {
+            match filepath.extension() {
+                Some(file_extension) => {
+                    let file_extension = file_extension.to_string_lossy().to_lowercase();
+
+                    // Replace file type identifier in the name
+                    let (file_type_name, _) = user_config.file_types
+                        .iter()
+                        .find(|(_, allowed_file_extensions)| allowed_file_extensions.contains(&file_extension))
+                        .ok_or_else(|| anyhow!("File extension not defined in configuration."))?;
+                    let cur_name = user_config.file_naming_scheme.replace("%{type}", file_type_name);
+
+                    // Replace file extension in template: Lower case existing file extension (which a hardcoded special rule to rewrite
+                    // "jpeg" to "jpg" though)
+                    let cur_name = cur_name.replace("%{fileextension}", if file_extension == "jpeg" { "jpg" } else { &file_extension });
+
+                    // Replace datetime fields with timestamp
+                    Ok(timestamp_local.format(&cur_name).to_string())
+                },
+                None => {
+                    bail!("Could not determine file extension.")
+                }
+            }
+        },
+        None => {
+            bail!("EXIF timestamp not set.");
+        }
+    }
 }
 
 fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
