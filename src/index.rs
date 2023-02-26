@@ -1,4 +1,5 @@
 use anyhow::{Context, Result};
+use log::debug;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::fs::File;
@@ -81,6 +82,7 @@ pub fn get_index_root_and_subdir(dir: &Path) -> Result<Option<(PathBuf, PathBuf)
 /// Reads the index file for given root directory.
 pub fn read_index_file(root_dir: &Path) -> Result<Index> {
     let filepath = root_dir.join(INDEX_FILE_NAME);
+    debug!("Reading index file at {}...", filepath.display());
     let file = File::open(&filepath).with_context(|| format!("Could not open index file at {} for reading!", filepath.display()))?;
     let reader = BufReader::new(file);
     let res = serde_json::from_reader(reader).with_context(|| format!("Could not parse index file at {}!", filepath.display()))?;

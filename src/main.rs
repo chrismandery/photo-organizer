@@ -1,5 +1,6 @@
 use anyhow::Result;
 use clap::{Parser, Subcommand};
+use log::{debug, error, info, warn};
 use std::collections::HashSet;
 use std::env::current_dir;
 use std::path::{Path, PathBuf};
@@ -15,6 +16,9 @@ mod index;
 #[derive(Debug, Parser)]
 #[command(author, version, about, long_about = None)]
 struct Args {
+    #[clap(flatten)]
+    verbose: clap_verbosity_flag::Verbosity<clap_verbosity_flag::InfoLevel>,
+
     /// Do not make any writing changes to the filesystem, but just print what would be done
     #[arg(long)]
     dry_run: bool,
@@ -56,8 +60,8 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
 
     // Check whether the index file is versioned using Git and hint user to do so if that is not the case
     if args.command != Command::Init && !check_index_file_is_git_versioned(root_dir) {
-        println!("Warning: Index file in {} does not seem to be versioned using Git.", root_dir.display());
-        println!("It is recommended to setting up a Git repository for tracking changes of the index file.");
+        warn!("Warning: Index file in {} does not seem to be versioned using Git.", root_dir.display());
+        warn!("It is recommended to setting up a Git repository for tracking changes of the index file.");
     }
 
     match args.command {
@@ -65,7 +69,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
             // Print warning is index is not up to date
             let index_changed = update_index(root_dir, &mut index.clone(), &photos)?;
             if index_changed {
-                println!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
+                warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
             // Run all checks (TODO: should be configurable later)
@@ -88,7 +92,9 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
 
     if index_changed {
         write_index_file(root_dir, &mut index)?;
-        println!("Index file for {} has been updated.", root_dir.display());
+        info!("Index file for {} has been updated.", root_dir.display());
+    } else {
+        debug!("No changes, index file not being updated.");
     }
 
     Ok(())
@@ -97,6 +103,13 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
 fn main() -> Result<()> {
     let args = Args::parse();
 
+    // Configure logger for verbosity
+    env_logger::Builder::new()
+        .filter_level(args.verbose.log_level_filter())
+        .format_target(false)
+        .format_timestamp(None)
+        .init();
+
     // Get photo collection that the current working directory is a part of (required by all commands expect init)
     let found_collection = get_index_root_and_subdir(&current_dir()?)?;
 
@@ -104,22 +117,22 @@ fn main() -> Result<()> {
         // Specifically handle the init command since it is the only command that does not require an existing photo collection
         match found_collection {
             Some((ref root_dir, _)) => {
-                println!("Cannot initialize a new photo collection here!");
-                println!("This directory is already within the collection at: {}", root_dir.display());
+                error!("Cannot initialize a new photo collection here!");
+                error!("This directory is already within the collection at: {}", root_dir.display());
             },
             None => {
                 let wd = current_dir()?;
                 write_index_file(&wd, &mut Index::default())?;
-                println!("Empty index file created for directory {}.", wd.display());
-                println!("Adjust configuration options in file if desired and then run the \"update\" command.");
+                info!("Empty index file created for directory {}.", wd.display());
+                info!("Adjust configuration options in file if desired and then run the \"update\" command.");
             }
         }
     } else if let Some((ref root_dir, ref subdir)) = found_collection {
         // Handle all other commands
         handle_command(&args, root_dir, subdir)?;
     } else {
-        println!("Working directory does not seem to be part of a photo collection!");
-        println!("Please run \"init\" in this or the appropriate parent directory.");
+        error!("Working directory does not seem to be part of a photo collection!");
+        error!("Please run \"init\" in this or the appropriate parent directory.");
     }
 
     Ok(())
@@ -141,7 +154,7 @@ fn update_index(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Resu
 
     // Check for photos in the index that do no longer exist and thus have been deleted or renamed
     let deleted_photos_paths: HashSet<_> = index_set.difference(&photos_set).collect();
-    let deleted_photos: Vec<IndexEntry> = index.photos.iter().filter(|p| deleted_photos_paths.contains(&p.filepath)).cloned().collect();
+    let mut deleted_photos: Vec<IndexEntry> = index.photos.iter().filter(|p| deleted_photos_paths.contains(&p.filepath)).cloned().collect();
     index.photos.retain_mut(|p| !deleted_photos_paths.contains(&p.filepath));
 
     // Check for new photos that are not part of the index yet
@@ -154,12 +167,19 @@ fn update_index(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Resu
         // Hash photo
         let hash = calc_photo_hash(&root_dir.join(added_photo))?;
 
-        let new_index_entry = if let Some(renamed_photo) = deleted_photos.iter().find(|p| p.filehash == hash) {
+        let new_index_entry = if let Some(renamed_photo_index) = deleted_photos.iter().position(|p| p.filehash == hash) {
+            // Remove entry in deleted_photos so it does not show up when we are logging all deleted photos below
+            let renamed_photo = deleted_photos.swap_remove(renamed_photo_index);
+
+            info!("Renamed: {} -> {}", renamed_photo.filepath.display(), added_photo.display());
+
             // Hash matches one of the deleted photos (this photo was just renamed)
             let mut new_entry = renamed_photo.clone();
             new_entry.filepath = added_photo.clone();
             new_entry
         } else {
+            info!("Added: {}", added_photo.display());
+
             // Hash not found in the deleted photos (this photo is new)
             IndexEntry {
                 filepath: added_photo.clone(),
@@ -169,6 +189,11 @@ fn update_index(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Resu
         };
 
         index.photos.push(new_index_entry);
+    }
+
+    // Log deleted photos (note: apparent deletions that correspond to renamed files have already been removed from the vec)
+    for dp in deleted_photos.iter() {
+        info!("Deleted: {}", dp.filepath.display());
     }
 
     Ok(new_photo_found || !deleted_photos.is_empty())
