@@ -102,7 +102,7 @@ fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
         None
     };
 
-    let make_value = exif.get_field(exif::Tag::Model, exif::In::PRIMARY).map(|e| &e.value);
+    let make_value = exif.get_field(exif::Tag::Make, exif::In::PRIMARY).map(|e| &e.value);
     let make = if let Some(exif::Value::Ascii(s)) = make_value {
         let s = s.first().context("EXIF make name has no entry!")?;
         Some(from_utf8(s).context("Could not parse EXIF make name as utf8!")?.to_string())
