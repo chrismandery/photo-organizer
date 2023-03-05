@@ -20,7 +20,9 @@ pub struct Photo {
 pub struct PhotoMetaData {
     pub make: Option<String>,
     pub model: Option<String>,
-    pub timestamp_local: Option<NaiveDateTime>
+    pub timestamp_local: Option<NaiveDateTime>,
+    pub location: Option<(f64, f64)>,
+    pub altitude: Option<f64>
 }
 
 /// Hashes the given file and returns the hash as a hex-encoded string.
@@ -125,10 +127,43 @@ pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
         None
     };
 
+    let latitude_value = exif.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY).map(|e| &e.value);
+    let longitude_value = exif.get_field(exif::Tag::GPSLongitude, exif::In::PRIMARY).map(|e| &e.value);
+
+    let location = if let (Some(exif::Value::Rational(lat_vec)), Some(exif::Value::Rational(long_vec))) = (latitude_value, longitude_value) {
+        let mut it = lat_vec.iter();
+        let lat_degrees = it.next().context("Could not pop degrees from EXIF GPSLatitude!")?;
+        let lat_minutes = it.next().context("Could not pop minutes from EXIF GPSLatitude!")?;
+        let lat_seconds = it.next().context("Could not pop seconds from EXIF GPSLatitude!")?;
+
+        let mut it = long_vec.iter();
+        let long_degrees = it.next().context("Could not pop degrees from EXIF GPSLongitude!")?;
+        let long_minutes = it.next().context("Could not pop minutes from EXIF GPSLongitude!")?;
+        let long_seconds = it.next().context("Could not pop seconds from EXIF GPSLongitude!")?;
+
+        // Calculate decimal latitude/longitude values from degrees/minutes/seconds
+        let lat = lat_degrees.to_f64() + lat_minutes.to_f64() / 60.0 + lat_seconds.to_f64() / 3600.0;
+        let long = long_degrees.to_f64() + long_minutes.to_f64() / 60.0 + long_seconds.to_f64() / 3600.0;
+
+        Some((lat, long))
+    } else {
+        None
+    };
+
+    let altitude_value = exif.get_field(exif::Tag::GPSAltitude, exif::In::PRIMARY).map(|e| &e.value);
+    let altitude = if let Some(exif::Value::Rational(v)) = altitude_value {
+        let v = v.first().context("EXIF GPSAltitude has no entry!")?;
+        Some(v.to_f64())
+    } else {
+        None
+    };
+
     Ok(PhotoMetaData {
         model: model,
         make: make,
-        timestamp_local: timestamp
+        timestamp_local: timestamp,
+        location: location,
+        altitude: altitude
     })
 }
 

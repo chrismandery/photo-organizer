@@ -30,10 +30,13 @@ pub fn list(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, 
         // Read EXIF data of photo
         let exif_str = match read_exif_data(&root_dir.join(&path)) {
             Ok(pmd) => {
-                format!("{} / {} / taken @ {}",
+                format!("{} / {} / {} / loc: {},{},{}",
                     pmd.make.as_deref().unwrap_or("<unknown make>"),
                     pmd.model.as_deref().unwrap_or("<unknown model>"),
-                    pmd.timestamp_local.map(|ts| ts.format("%d.%m.%Y %H:%M").to_string()).as_deref().unwrap_or("unknown time"))
+                    pmd.timestamp_local.map(|ts| ts.format("%d.%m.%Y %H:%M").to_string()).as_deref().unwrap_or("unknown time"),
+                    pmd.location.map(|l| format!("{:.4}", l.0)).as_deref().unwrap_or("?"),
+                    pmd.location.map(|l| format!("{:.4}", l.1)).as_deref().unwrap_or("?"),
+                    pmd.altitude.map(|a| a.to_string() + "m").as_deref().unwrap_or("?"))
             },
             Err(_) => "Could not read EXIF data".into()
         };
