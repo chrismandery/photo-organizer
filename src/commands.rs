@@ -1,11 +1,11 @@
 use anyhow::{anyhow, Result};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use log::{debug, info, warn};
 use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::checks::{check_for_duplicates, check_hashes, check_photo_naming};
-use crate::collection::{calc_photo_hash, Photo, get_canonical_photo_filename};
+use crate::collection::{calc_photo_hash, Photo, get_canonical_photo_filename, get_photos_in_subdir, read_exif_data};
 use crate::index::{Index, IndexEntry};
 
 /// Runs all checks and returns whether any of the checks has generated a warning.
@@ -16,27 +16,49 @@ pub fn check(root_dir: &Path, index: &Index) -> bool {
         check_photo_naming(root_dir, &index)
 }
 
+/// Show meta data from EXIF tags and the index file for image files within the current directory.
+pub fn list(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool) -> Result<()> {
+    let cur_photos = get_photos_in_subdir(photos, subdir, recursive);
+
+    // Create HashMap from index for efficient lookup
+    let index_map: HashMap<PathBuf, &IndexEntry> = index.photos.iter().map(|p| (p.filepath.clone(), p)).collect();
+
+    for photo in cur_photos {
+        let path = photo.relative_path;
+        let rel_path = path.strip_prefix(subdir).expect("Path not in subdir! (should never happen)");
+
+        // Read EXIF data of photo
+        let exif_str = match read_exif_data(&root_dir.join(&path)) {
+            Ok(pmd) => {
+                format!("{} / {} / taken @ {}",
+                    pmd.make.as_deref().unwrap_or("<unknown make>"),
+                    pmd.model.as_deref().unwrap_or("<unknown model>"),
+                    pmd.timestamp_local.map(|ts| ts.format("%d.%m.%Y %H:%M").to_string()).as_deref().unwrap_or("unknown time"))
+            },
+            Err(_) => "Could not read EXIF data".into()
+        };
+
+        // Check original filename from index ()
+        let index_str = match index_map.get(&path) {
+            Some(ie) => format!("orig name: {}", ie.orig_filename),
+            None => "photo not indexed!".into()
+        };
+
+        info!("{}: {} / {}", rel_path.display(), exif_str, index_str);
+    }
+
+    Ok(())
+}
+
 /// Renames the files in the given directory (and potentially subdirectories) to follow the naming scheme configured in the index. Returns
 /// how many files have been renamed by the function.
 pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool, dry_run: bool) -> Result<usize> {
     // TODO: Maybe ask for additional confirmation? (if not in dry-run mode)
-
-    // Get all files that should by renamed
-    let filepaths: Vec<PathBuf> = photos
-        .into_iter()
-        .filter(|photo| {
-            if recursive {
-                photo.relative_path.starts_with(subdir)
-            } else {
-                photo.relative_path.parent().map(|d| d == subdir).unwrap_or(false)
-            }
-        })
-        .map(|photo| photo.relative_path.clone())
-        .collect();
+    let cur_photos = get_photos_in_subdir(photos, subdir, recursive);
 
     // Check for each file whether it should be renamed
     let mut renamed_photo_count = 0;
-    for filepath in filepaths {
+    for filepath in cur_photos.into_iter().map(|p| p.relative_path) {
         let full_old_path = root_dir.join(&filepath);
 
         match get_canonical_photo_filename(&full_old_path, &index.user_config) {

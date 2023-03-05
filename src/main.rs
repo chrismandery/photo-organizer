@@ -35,7 +35,7 @@ enum Command {
     /// Initialize new photo collection by creating an index file in the current directory
     Init,
 
-    /// Show meta information for image files within the current directory
+    /// Show meta data from EXIF tags and the index file for image files within the current directory
     List {
         #[arg(long, short)]
         recursive: bool
@@ -80,8 +80,13 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
         },
         Command::Init => {},  // handled in main()
         Command::List { recursive } => {
-            dbg!(recursive);
-            todo!();
+            // Print warning is index is not up to date
+            let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
+            if index_not_up_to_date {
+                warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
+            }
+
+            commands::list(root_dir, subdir, &index, &photos, recursive)?;
         },
         Command::Rename { recursive } => {
             // Print warning is index is not up to date

@@ -18,9 +18,9 @@ pub struct Photo {
 /// Holds photo meta data that are extracted from the EXIF data. This struct contains only the subset of the EXIF data that is used within
 /// this project right now.
 pub struct PhotoMetaData {
-    make: Option<String>,
-    model: Option<String>,
-    timestamp_local: Option<NaiveDateTime>
+    pub make: Option<String>,
+    pub model: Option<String>,
+    pub timestamp_local: Option<NaiveDateTime>
 }
 
 /// Hashes the given file and returns the hash as a hex-encoded string.
@@ -67,7 +67,22 @@ pub fn get_canonical_photo_filename(filepath: &PathBuf, user_config: &UserConfig
     }
 }
 
-fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
+/// Get all photos that are in a specific subdirectory (and possibly its subdirectories).
+pub fn get_photos_in_subdir(photos: &[Photo], subdir: &Path, recursive: bool) -> Vec<Photo> {
+    photos
+        .iter()
+        .filter(|photo| {
+            if recursive {
+                photo.relative_path.starts_with(subdir)
+            } else {
+                photo.relative_path.parent().map(|d| d == subdir).unwrap_or(false)
+            }
+        })
+        .cloned()
+        .collect()
+}
+
+pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
     let file = File::open(&filepath)
         .with_context(|| format!("Could not open {} for reading EXIF data!", filepath.display()))?;
     let mut bufreader = BufReader::new(&file);
@@ -137,6 +152,9 @@ pub fn scan_photo_collection(config: &UserConfig, root_dir: &Path) -> Result<Vec
             }
         }
     }
+
+    // Sort photo list by path to declutter the output of various commands that work with this list in its order (e.g., rename and list)
+    res.sort_unstable_by_key(|e| e.relative_path.clone());
 
     Ok(res)
 }
