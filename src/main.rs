@@ -2,12 +2,10 @@ use anyhow::Result;
 use clap::{Parser, Subcommand};
 use log::{debug, error, info, warn};
 use std::env::current_dir;
-
 use std::path::Path;
+use std::process::ExitCode;
 
-use checks::{check_for_duplicates, check_hashes, check_photo_naming};
 use collection::scan_photo_collection;
-use commands::{rename_photos, update_index};
 use index::{Index, check_index_file_is_git_versioned, get_index_root_and_subdir, read_index_file, write_index_file};
 
 mod checks;
@@ -54,7 +52,7 @@ enum Command {
 }
 
 /// Handles execution of all commands except the init command.
-fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
+fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCode> {
     // Read index file and scan photo collection
     let mut index = read_index_file(root_dir)?;
     let mut index_changed = false;
@@ -66,18 +64,19 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
         warn!("It is recommended to setting up a Git repository for tracking changes of the index file.");
     }
 
+    let mut exit_code = ExitCode::SUCCESS;
+
     match args.command {
         Command::Check => {
             // Print warning is index is not up to date
-            let index_not_up_to_date = update_index(root_dir, &mut index.clone(), &photos)?;
+            let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
             if index_not_up_to_date {
                 warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
-            // Run all checks (TODO: should be configurable later)
-            check_for_duplicates(&index);
-            check_hashes(root_dir, &index);
-            check_photo_naming(root_dir, &index);
+            if !commands::check(root_dir, &mut index) {
+                exit_code = ExitCode::FAILURE;
+            }
         },
         Command::Init => {},  // handled in main()
         Command::List { recursive } => {
@@ -86,12 +85,12 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
         },
         Command::Rename { recursive } => {
             // Print warning is index is not up to date
-            let index_not_up_to_date = update_index(root_dir, &mut index.clone(), &photos)?;
+            let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
             if index_not_up_to_date {
                 warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
-            let renamed_file_count = rename_photos(root_dir, subdir, &index, &photos, recursive, args.dry_run)?;
+            let renamed_file_count = commands::rename(root_dir, subdir, &index, &photos, recursive, args.dry_run)?;
 
             if renamed_file_count > 0 {
                 info!("{} photos have been renamed. Run \"update\" to update the index file.", renamed_file_count);
@@ -100,7 +99,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
             }
         },
         Command::Update => {
-            index_changed = update_index(root_dir, &mut index, &photos)?;
+            index_changed = commands::update(root_dir, &mut index, &photos)?;
         }
     }
 
@@ -115,10 +114,10 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<()> {
         debug!("No changes, index file not being updated.");
     }
 
-    Ok(())
+    Ok(exit_code)
 }
 
-fn main() -> Result<()> {
+fn main() -> Result<ExitCode> {
     let args = Args::parse();
 
     // Configure logger for verbosity
@@ -131,27 +130,30 @@ fn main() -> Result<()> {
     // Get photo collection that the current working directory is a part of (required by all commands expect init)
     let found_collection = get_index_root_and_subdir(&current_dir()?)?;
 
-    if args.command == Command::Init {
+    let exit_code = if args.command == Command::Init {
         // Specifically handle the init command since it is the only command that does not require an existing photo collection
         match found_collection {
             Some((ref root_dir, _)) => {
                 error!("Cannot initialize a new photo collection here!");
                 error!("This directory is already within the collection at: {}", root_dir.display());
+                ExitCode::FAILURE
             },
             None => {
                 let wd = current_dir()?;
                 write_index_file(&wd, &mut Index::default())?;
                 info!("Empty index file created for directory {}.", wd.display());
                 info!("Adjust configuration options in file if desired and then run the \"update\" command.");
+                ExitCode::SUCCESS
             }
         }
     } else if let Some((ref root_dir, ref subdir)) = found_collection {
         // Handle all other commands
-        handle_command(&args, root_dir, subdir)?;
+        handle_command(&args, root_dir, subdir)?
     } else {
         error!("Working directory does not seem to be part of a photo collection!");
         error!("Please run \"init\" in this or the appropriate parent directory.");
-    }
+        ExitCode::FAILURE
+    };
 
-    Ok(())
+    Ok(exit_code)
 }

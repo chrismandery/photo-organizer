@@ -1,15 +1,24 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashSet;
 use log::{debug, info, warn};
-use std::fs::rename;
+use std::fs;
 use std::path::{Path, PathBuf};
 
+use crate::checks::{check_for_duplicates, check_hashes, check_photo_naming};
 use crate::collection::{calc_photo_hash, Photo, get_canonical_photo_filename};
 use crate::index::{Index, IndexEntry};
 
+/// Runs all checks and returns whether any of the checks has generated a warning.
+pub fn check(root_dir: &Path, index: &Index) -> bool {
+    // Run all checks (TODO: should be configurable later)
+    check_for_duplicates(&index) ||
+        check_hashes(root_dir, &index) ||
+        check_photo_naming(root_dir, &index)
+}
+
 /// Renames the files in the given directory (and potentially subdirectories) to follow the naming scheme configured in the index. Returns
 /// how many files have been renamed by the function.
-pub fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool, dry_run: bool) -> Result<usize> {
+pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool, dry_run: bool) -> Result<usize> {
     // TODO: Maybe ask for additional confirmation? (if not in dry-run mode)
 
     // Get all files that should by renamed
@@ -48,7 +57,7 @@ pub fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec
                             .join(filepath.parent().expect("Could not get directory component of photo path!"))
                             .join(canonical_name);
 
-                        rename(full_old_path, full_new_path)?;
+                        fs::rename(full_old_path, full_new_path)?;
                         renamed_photo_count += 1;
                     }
                 }
@@ -64,7 +73,7 @@ pub fn rename_photos(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec
 
 /// Updates the index entries with the actual stored photos, detecting new, renamed and deleted photos. Returns whether the index has been
 /// changed by the function.
-pub fn update_index(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Result<bool> {
+pub fn update(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Result<bool> {
     // Create index data structures for faster matching of index and photos
     let index_set: HashSet<PathBuf> = index.photos.iter().map(|p| p.filepath.clone()).collect();
     let photos_set: HashSet<PathBuf> = photos.iter().map(|p| p.relative_path.clone()).collect();
