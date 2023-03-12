@@ -1,8 +1,12 @@
-use anyhow::{anyhow, Result};
-use std::collections::{HashMap, HashSet};
+use anyhow::{anyhow, Context, Result};
+use geo_types::Point;
+use gpx::{Gpx, GpxVersion, Waypoint, write};
 use log::{debug, info, warn};
+use std::collections::{HashMap, HashSet};
 use std::fs;
+use std::fs::File;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use crate::checks::{check_for_duplicates, check_hashes, check_photo_naming};
 use crate::collection::{calc_photo_hash, Photo, get_canonical_photo_filename, get_photos_in_subdir, read_exif_data};
@@ -48,6 +52,53 @@ pub fn list(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, 
         };
 
         info!("{}: {} / {}", rel_path.display(), exif_str, index_str);
+    }
+
+    Ok(())
+}
+
+/// Exports the GPS locations of the image files within the current directory in the GPX format and shows them on a map
+pub fn map(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, recursive: bool, command: Option<&str>) -> Result<()> {
+    let cur_photos = get_photos_in_subdir(photos, subdir, recursive);
+
+    // Create GPX data structure for writing
+    let mut gpx_data : Gpx = Default::default();
+    gpx_data.version = GpxVersion::Gpx11;
+
+    for photo in cur_photos {
+        let path = photo.relative_path;
+        let full_path = &root_dir.join(&path);
+
+        // Read EXIF data of photo
+        if let Ok(pmd) = read_exif_data(full_path) {
+            if let Some(location) = pmd.location {
+                let mut wp = Waypoint::new(Point::new(location.1, location.0));
+                wp.elevation = pmd.altitude;
+                wp.name = Some(path.to_string_lossy().to_string());
+                // TODO: Add time
+
+                gpx_data.waypoints.push(wp);
+            } else {
+                warn!("No location found in EXIF data from {}!", path.display());
+            }
+        } else {
+            warn!("Could not read EXIF data from {}!", path.display());
+        };
+    }
+
+    // Write GPX data to file
+    // TODO: Use proper temporary file instead of hardcoded one
+    let file = File::create("/tmp/photo_locations.gpx").with_context(|| format!("Could not open GPX file for writing!"))?;
+    write(&gpx_data, &file)?;
+    file.sync_all()?;
+    drop(file);
+
+    // Invoke external tool to visualize the GPX data using a map
+    if let Some(command) = command {
+        info!("Invoking external command {}...", command);
+        Command::new(command)
+            .args(["/tmp/photo_locations.gpx"])
+            .spawn()?;
     }
 
     Ok(())

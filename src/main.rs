@@ -41,6 +41,16 @@ enum Command {
         recursive: bool
     },
 
+    /// Exports the GPS locations of the image files within the current directory in the GPX format and shows them on a map
+    Map {
+        /// Command to run for visualizing the GPX file (if empty, just save the GPX file)
+        #[arg(long, short, default_value="gpxsee")]
+        command: Option<String>,
+
+        #[arg(long, short)]
+        recursive: bool
+    },
+
     /// Renames the files in the current directory (and potentially subdirectories) to follow the configured naming scheme
     Rename {
         #[arg(long, short)]
@@ -66,7 +76,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
 
     let mut exit_code = ExitCode::SUCCESS;
 
-    match args.command {
+    match &args.command {
         Command::Check => {
             // Print warning is index is not up to date
             let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
@@ -86,8 +96,12 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
                 warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
-            commands::list(root_dir, subdir, &index, &photos, recursive)?;
+            commands::list(root_dir, subdir, &index, &photos, *recursive)?;
         },
+        Command::Map { command, recursive } => {
+            // TODO: Check index up-to-date (once refactored)
+            commands::map(root_dir, subdir, &photos, *recursive, command.as_deref())?;
+        }
         Command::Rename { recursive } => {
             // Print warning is index is not up to date
             let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
@@ -95,7 +109,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
                 warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
-            let renamed_file_count = commands::rename(root_dir, subdir, &index, &photos, recursive, args.dry_run)?;
+            let renamed_file_count = commands::rename(root_dir, subdir, &index, &photos, *recursive, args.dry_run)?;
 
             if renamed_file_count > 0 {
                 info!("{} photos have been renamed. Run \"update\" to update the index file.", renamed_file_count);
