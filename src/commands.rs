@@ -70,19 +70,22 @@ pub fn map(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, recursive: bool,
         let full_path = &root_dir.join(&path);
 
         // Read EXIF data of photo
-        if let Ok(pmd) = read_exif_data(full_path) {
-            if let Some(location) = pmd.location {
-                let mut wp = Waypoint::new(Point::new(location.1, location.0));
-                wp.elevation = pmd.altitude;
-                wp.name = Some(path.to_string_lossy().to_string());
-                // TODO: Add time
+        match read_exif_data(full_path) {
+            Ok(pmd) => {
+                if let Some(location) = pmd.location {
+                    let mut wp = Waypoint::new(Point::new(location.1, location.0));
+                    wp.elevation = pmd.altitude;
+                    wp.name = Some(path.to_string_lossy().to_string());
+                    // TODO: Add time
 
-                gpx_data.waypoints.push(wp);
-            } else {
-                warn!("No location found in EXIF data from {}!", path.display());
+                    gpx_data.waypoints.push(wp);
+                } else {
+                    warn!("No location found in EXIF data from {}!", path.display());
+                }
+            },
+            Err(e) => {
+                warn!("Could not read EXIF data from {}: {}", path.display(), e);
             }
-        } else {
-            warn!("Could not read EXIF data from {}!", path.display());
         };
     }
 

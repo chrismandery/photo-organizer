@@ -130,7 +130,16 @@ pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
     let latitude_value = exif.get_field(exif::Tag::GPSLatitude, exif::In::PRIMARY).map(|e| &e.value);
     let longitude_value = exif.get_field(exif::Tag::GPSLongitude, exif::In::PRIMARY).map(|e| &e.value);
 
-    let location = if let (Some(exif::Value::Rational(lat_vec)), Some(exif::Value::Rational(long_vec))) = (latitude_value, longitude_value) {
+    // {Latitude,Longitude}Ref specificy North/South resp. East/West
+    let latitude_ref_value = exif.get_field(exif::Tag::GPSLatitudeRef, exif::In::PRIMARY).map(|e| &e.value);
+    let longitude_ref_value = exif.get_field(exif::Tag::GPSLongitudeRef, exif::In::PRIMARY).map(|e| &e.value);
+
+    let location = if let (
+        Some(exif::Value::Rational(lat_vec)),
+        Some(exif::Value::Rational(long_vec)),
+        Some(exif::Value::Ascii(lat_ref_vec)),
+        Some(exif::Value::Ascii(long_ref_vec))
+        ) = (latitude_value, longitude_value, latitude_ref_value, longitude_ref_value) {
         let mut it = lat_vec.iter();
         let lat_degrees = it.next().context("Could not pop degrees from EXIF GPSLatitude!")?;
         let lat_minutes = it.next().context("Could not pop minutes from EXIF GPSLatitude!")?;
@@ -141,9 +150,23 @@ pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
         let long_minutes = it.next().context("Could not pop minutes from EXIF GPSLongitude!")?;
         let long_seconds = it.next().context("Could not pop seconds from EXIF GPSLongitude!")?;
 
+        let lat_ref = lat_ref_vec.first().context("EXIF GPSLatitudeRef has no entry!")?;
+        let lat_ref = from_utf8(lat_ref).context("Could not parse EXIF GPSLatitudeRef value as utf8!")?;
+
+        let long_ref = long_ref_vec.first().context("EXIF GPSLongitudeRef has no entry!")?;
+        let long_ref = from_utf8(long_ref).context("Could not parse EXIF GPSLongitudeRef value as utf8!")?;
+
         // Calculate decimal latitude/longitude values from degrees/minutes/seconds
-        let lat = lat_degrees.to_f64() + lat_minutes.to_f64() / 60.0 + lat_seconds.to_f64() / 3600.0;
-        let long = long_degrees.to_f64() + long_minutes.to_f64() / 60.0 + long_seconds.to_f64() / 3600.0;
+        let lat = (lat_degrees.to_f64() + lat_minutes.to_f64() / 60.0 + lat_seconds.to_f64() / 3600.0) * match lat_ref {
+            "N" => { 1.0 },
+            "S" => { -1.0 },
+            _ => { bail!("GPSLatitudeRef was \"{}\", expected \"N\" or \"S\"!", lat_ref); }
+        };
+        let long = (long_degrees.to_f64() + long_minutes.to_f64() / 60.0 + long_seconds.to_f64() / 3600.0) * match long_ref {
+            "E" => { 1.0 },
+            "W" => { -1.0 },
+            _ => { bail!("GPSLongitudeRef was \"{}\", expected \"E\" or \"W\"!", long_ref); }
+        };
 
         Some((lat, long))
     } else {
