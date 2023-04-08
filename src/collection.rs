@@ -202,7 +202,7 @@ pub fn scan_photo_collection(config: &UserConfig, root_dir: &Path) -> Result<Vec
         if entry.file_type().is_file() {
             let path = entry.path();
             if let Some(extension) = path.extension() {
-                if filter_file_extensions.contains(&extension.to_string_lossy().to_string()) {
+                if filter_file_extensions.contains(&extension.to_string_lossy().to_lowercase()) {
                     res.push(Photo {
                         relative_path: path.strip_prefix(root_dir)?.to_owned()
                     });
