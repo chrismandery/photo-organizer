@@ -14,9 +14,10 @@ use crate::index::{Index, IndexEntry};
 
 /// Runs all checks and returns whether any of the checks has generated a warning.
 pub fn check(root_dir: &Path, index: &Index) -> bool {
-    // Run all checks (TODO: should be configurable later)
-    check_for_duplicates(&index) ||
-        check_hashes(root_dir, &index) ||
+    // Run checks without short-circuit evaluation (i.e., always run all checks)
+    // TODO: Should be configurable later which checks should be run
+    check_for_duplicates(&index) |
+        check_hashes(root_dir, &index) |
         check_photo_naming(root_dir, &index)
 }
 
