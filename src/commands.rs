@@ -1,10 +1,14 @@
 use anyhow::{anyhow, Context, Result};
+use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use geo_types::Point;
 use gpx::{Gpx, GpxVersion, Waypoint, write};
+use html_escape::encode_safe;
 use log::{debug, info, warn};
+use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -149,6 +153,47 @@ pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>
     }
 
     Ok(renamed_photo_count)
+}
+
+/// Creates a thumbnail catalogue in a HTML file (see description of thumbcat CLI command).
+pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, resize_width: u32) -> Result<()> {
+    // Get photos in current directory
+    let cur_photos = get_photos_in_subdir(photos, subdir, false);
+
+    // Generate HTML file
+    let html_path = root_dir.join(subdir).join("thumbnails.html");
+    let mut f = File::create(&html_path).with_context(|| format!("Could not write to {}!", html_path.display()))?;
+    write!(&mut f, "<!DOCTYPE html>\n")?;
+    write!(&mut f, "<html lang=\"en\">\n")?;
+    write!(&mut f, "<head>\n")?;
+    write!(&mut f, "<meta charset=\"utf-8\">\n")?;
+    write!(&mut f, "<title>Thumbnail Catalogue for Directory {}</title>\n", encode_safe(&subdir.display().to_string()))?;
+    write!(&mut f, "<style>h1 {{ font-size: large }}</style>\n")?;
+    write!(&mut f, "</head>\n")?;
+    write!(&mut f, "<body>\n")?;
+
+    let thumbnails: Vec<_> = cur_photos
+        .par_iter()
+        .map(|photo| {
+            (photo.relative_path.strip_prefix(&subdir).unwrap(), photo.get_thumbnail(root_dir, resize_width))
+        })
+        .collect();
+
+    for (photo_path, data) in thumbnails {
+        write!(&mut f, "<h1>{}</h1>\n", &photo_path.display())?;
+
+        match data {
+            Ok(bytes) => { write!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" /></p>", STANDARD_NO_PAD.encode(&bytes))?; },
+            Err(e) => { write!(&mut f, "<p>{}</p>", encode_safe(&e.to_string()))?; }
+        }
+    }
+
+    write!(&mut f, "</body>\n")?;
+    write!(&mut f, "</html>\n")?;
+
+    info!("File {} generated successfully.", html_path.display());
+
+    Ok(())
 }
 
 /// Updates the index entries with the actual stored photos, detecting new, renamed and deleted photos. Returns whether the index has been

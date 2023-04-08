@@ -1,9 +1,11 @@
 use anyhow::{anyhow, bail, Context, Result};
 use chrono::prelude::*;
 use hex::encode;
+use image::GenericImageView;
+use log::debug;
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{BufReader, copy};
+use std::io::{BufReader, Cursor, copy};
 use std::path::{Path, PathBuf};
 use std::str::from_utf8;
 use walkdir::WalkDir;
@@ -23,6 +25,29 @@ pub struct PhotoMetaData {
     pub timestamp_local: Option<NaiveDateTime>,
     pub location: Option<(f64, f64)>,
     pub altitude: Option<f64>
+}
+
+impl Photo {
+    /// Returns a JPEG representation of the image scaled down to the given maximum width.
+    pub fn get_thumbnail(&self, root_dir: &Path, max_width: u32) -> Result<Vec<u8>> {
+        let path = root_dir.join(&self.relative_path);
+
+        // Read image
+        let img = image::open(&path).with_context(|| format!("Could not read image from {}!", path.display()))?;
+        debug!("Read {}: Image has dimensions {:?}.", path.display(), img.dimensions());
+
+        // Resize image to given width
+        let img = img.resize(max_width, 10000, image::imageops::FilterType::Triangle);
+
+        // Save image
+        let mut bytes: Vec<u8> = Vec::new();
+        img.write_to(&mut Cursor::new(&mut bytes), image::ImageOutputFormat::Jpeg(80))?;
+        debug!("Image resized. (size: {} kb)", bytes.len() / 1024);
+
+        Ok(bytes)
+    }
+
+    // TODO: Move remaining functions (below) here
 }
 
 /// Hashes the given file and returns the hash as a hex-encoded string.

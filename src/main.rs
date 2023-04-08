@@ -57,6 +57,15 @@ enum Command {
         recursive: bool
     },
 
+    /// Creates a thumbnail catalogue that shows all photos within the current directory in a size-optimized thumbnail format in a
+    /// self-contained HTML file. This is useful for previewing the photos, e.g., in a bandwidth-constrained setting where downloading all
+    /// the photos would not be feasible.
+    ThumbCat {
+        /// Width to resize images to
+        #[arg(long, short, default_value="300")]
+        resize_width: u32
+    },
+
     /// Update index file adding, renaming and deleting entries as image files have been changed
     Update
 }
@@ -116,6 +125,9 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
             } else {
                 info!("No photos renamed.");
             }
+        },
+        Command::ThumbCat { resize_width } => {
+            commands::thumbcat(root_dir, subdir, &photos, *resize_width)?;
         },
         Command::Update => {
             index_changed = commands::update(root_dir, &mut index, &photos)?;
