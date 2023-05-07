@@ -102,7 +102,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
             // Print warning is index is not up to date
             let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
             if index_not_up_to_date {
-                warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
+                warn!("Index file is not up-to-date! Consider running \"update\" before \"list\" to get accurate results.");
             }
 
             commands::list(root_dir, subdir, &index, &photos, *recursive)?;
@@ -115,7 +115,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
             // Print warning is index is not up to date
             let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
             if index_not_up_to_date {
-                warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
+                warn!("Index file is not up-to-date! Consider running \"update\" before \"rename\" to get accurate results.");
             }
 
             let renamed_file_count = commands::rename(root_dir, subdir, &index, &photos, *recursive, args.dry_run)?;
