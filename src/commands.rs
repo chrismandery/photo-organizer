@@ -3,7 +3,7 @@ use base64::{Engine as _, engine::general_purpose::STANDARD_NO_PAD};
 use geo_types::Point;
 use gpx::{Gpx, GpxVersion, Waypoint, write};
 use html_escape::encode_safe;
-use log::{debug, info, warn};
+use log::{debug, error, info, warn};
 use rayon::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -140,6 +140,14 @@ pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>
                         let full_new_path = root_dir
                             .join(filepath.parent().expect("Could not get directory component of photo path!"))
                             .join(canonical_name);
+
+                        // Check if file already exists and refuse to overwrite already existing file
+                        // Note: Since we just check before rename here, this is not free of race conditions (good enough for now though)
+                        // See: https://internals.rust-lang.org/t/rename-file-without-overriding-existing-target/17637
+                        if full_new_path.exists() {
+                            error!("Cannot rename: Target already exists.");
+                            continue;
+                        }
 
                         fs::rename(full_old_path, full_new_path)?;
                         renamed_photo_count += 1;
