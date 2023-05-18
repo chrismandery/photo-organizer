@@ -125,7 +125,7 @@ pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
     // Note: The timestamp is stored as a string with the format "2022:05:07 12:32:10"
     // Unfortunately, the standard does not mandate whether this timestamp is stored in local time or in UTC. For now, we are just
     // assuming it is already in local time, which seems to be true at least for Android mobile phones. Later, this can be revisited.
-    let timestamp_value = exif.get_field(exif::Tag::DateTime, exif::In::PRIMARY).map(|e| &e.value);
+    let timestamp_value = exif.get_field(exif::Tag::DateTimeOriginal, exif::In::PRIMARY).map(|e| &e.value);
     let timestamp = if let Some(exif::Value::Ascii(s)) = timestamp_value {
         let s = s.first().context("EXIF DateTime has no entry!")?;
         let s = from_utf8(s).context("Could not parse EXIF DateTime value as utf8!")?;
