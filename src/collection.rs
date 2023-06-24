@@ -2,7 +2,7 @@ use anyhow::{anyhow, bail, Context, Result};
 use chrono::prelude::*;
 use hex::encode;
 use image::GenericImageView;
-use log::debug;
+use log::{debug, warn};
 use sha2::{Digest, Sha256};
 use std::fs::File;
 use std::io::{BufReader, Cursor, copy};
@@ -24,20 +24,40 @@ pub struct PhotoMetaData {
     pub model: Option<String>,
     pub timestamp_local: Option<NaiveDateTime>,
     pub location: Option<(f64, f64)>,
-    pub altitude: Option<f64>
+    pub altitude: Option<f64>,
+    pub orientation: Option<u16>
 }
 
 impl Photo {
     /// Returns a JPEG representation of the image scaled down to the given maximum width.
     pub fn get_thumbnail(&self, root_dir: &Path, max_width: u32) -> Result<Vec<u8>> {
-        let path = root_dir.join(&self.relative_path);
+        let path: PathBuf = root_dir.join(&self.relative_path);
 
-        // Read image
-        let img = image::open(&path).with_context(|| format!("Could not read image from {}!", path.display()))?;
-        debug!("Read {}: Image has dimensions {:?}.", path.display(), img.dimensions());
+        // Read image and EXIF tags for orientation (see below)
+        let mut img: image::DynamicImage = image::open(&path).with_context(|| format!("Could not read image from {}!", path.display()))?;
+        let exif_data = read_exif_data(&path)?;
+        debug!("Read {}: Image has dimensions {:?} and orientation {}.", path.display(), img.dimensions(), exif_data.orientation.unwrap_or(1));
+
+        // Read orientation from EXIF tag
+        // Note: The image crate does not consider the orientation when reading the image (see, e.g.,
+        //       https://github.com/image-rs/image/issues/1045). Hence, we are manually flipping/rotation the read image here to get an
+        //       unrotated representation before generating the thumbnail.
+        if let Some(orientation) = exif_data.orientation {
+            match orientation {
+                1 => { /* orientation already correct */},
+                2 => { img = img.fliph(); },
+                3 => { img = img.rotate180(); },
+                4 => { img = img.flipv(); },
+                5 => { img = img.rotate90().fliph(); },
+                6 => { img = img.rotate90(); },
+                7 => { img = img.rotate270().fliph(); },
+                8 => { img = img.rotate270(); },
+                _ => { warn!("Invalid EXIF rotation value {} ignored! (valid values are 1 to 8)", orientation); }
+            }
+        }
 
         // Resize image to given width
-        let img = img.resize(max_width, 10000, image::imageops::FilterType::Triangle);
+        img = img.resize(max_width, 10000, image::imageops::FilterType::Triangle);
 
         // Save image
         let mut bytes: Vec<u8> = Vec::new();
@@ -206,12 +226,21 @@ pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
         None
     };
 
+    let orientation_value = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).map(|e| &e.value);
+    let orientation = if let Some(exif::Value::Short(v)) = orientation_value {
+        let v = v.first().context("EXIF Orientation has no entry!")?;
+        Some(v.clone())
+    } else {
+        None
+    };
+
     Ok(PhotoMetaData {
         model: model,
         make: make,
         timestamp_local: timestamp,
         location: location,
-        altitude: altitude
+        altitude: altitude,
+        orientation: orientation
     })
 }
 

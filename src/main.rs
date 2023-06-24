@@ -61,6 +61,10 @@ enum Command {
     /// self-contained HTML file. This is useful for previewing the photos, e.g., in a bandwidth-constrained setting where downloading all
     /// the photos would not be feasible.
     ThumbCat {
+        /// Filename for the thumbnail catalogue
+        #[arg(long, short, default_value="000_thumbnails.html")]
+        filename: String,
+
         /// Width to resize images to
         #[arg(long, short, default_value="300")]
         resize_width: u32
@@ -126,8 +130,8 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
                 info!("No photos renamed.");
             }
         },
-        Command::ThumbCat { resize_width } => {
-            commands::thumbcat(root_dir, subdir, &photos, *resize_width)?;
+        Command::ThumbCat { filename, resize_width } => {
+            commands::thumbcat(root_dir, subdir, &photos, filename, *resize_width)?;
         },
         Command::Update => {
             index_changed = commands::update(root_dir, &mut index, &photos)?;

@@ -164,12 +164,12 @@ pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>
 }
 
 /// Creates a thumbnail catalogue in a HTML file (see description of thumbcat CLI command).
-pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, resize_width: u32) -> Result<()> {
+pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_filename: &str, resize_width: u32) -> Result<()> {
     // Get photos in current directory
     let cur_photos = get_photos_in_subdir(photos, subdir, false);
 
     // Generate HTML file
-    let html_path = root_dir.join(subdir).join("thumbnails.html");
+    let html_path = root_dir.join(subdir).join(output_filename);
     let mut f = File::create(&html_path).with_context(|| format!("Could not write to {}!", html_path.display()))?;
     write!(&mut f, "<!DOCTYPE html>\n")?;
     write!(&mut f, "<html lang=\"en\">\n")?;
@@ -191,7 +191,7 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, resize_widt
         write!(&mut f, "<h1>{}</h1>\n", &photo_path.display())?;
 
         match data {
-            Ok(bytes) => { write!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" /></p>", STANDARD_NO_PAD.encode(&bytes))?; },
+            Ok(bytes) => { write!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" style=\"width: 100%\" /></p>", STANDARD_NO_PAD.encode(&bytes))?; },
             Err(e) => { write!(&mut f, "<p>{}</p>", encode_safe(&e.to_string()))?; }
         }
     }
