@@ -7,8 +7,7 @@ use log::{debug, error, info, warn};
 use rayon::prelude::*;
 use regex::Regex;
 use std::collections::{HashMap, HashSet};
-use std::fs;
-use std::fs::File;
+use std::fs::{self, File, read_dir};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -188,6 +187,26 @@ pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>
 pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_filename: &str, force: bool, recursive: bool,
     resize_width: u32) -> Result<()> {
     let root_plus_sub_dir = root_dir.join(subdir);
+
+    // When running in recursive mode, recurse into subdirectories (sorted) before processing this one
+    if recursive {
+        let mut recurse_subdirs: Vec<PathBuf> = read_dir(&root_plus_sub_dir)?
+            .filter_map(|e| {
+                let e = e.unwrap().file_name();
+                if root_plus_sub_dir.join(&e).is_dir() {
+                    Some(subdir.join(e))
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        recurse_subdirs.sort_unstable();
+
+        for d in recurse_subdirs {
+            thumbcat(root_dir, &d, photos, output_filename, force, recursive, resize_width)?;
+        }
+    }
 
     // Get photos in current directory and abort if the directory does not contain any photos
     let cur_photos = get_photos_in_subdir(photos, subdir, false);
