@@ -212,6 +212,7 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
     let cur_photos = get_photos_in_subdir(photos, subdir, false);
     if cur_photos.is_empty() {
         info!("No photos found in {}, skipping directory.", root_plus_sub_dir.display());
+        return Ok(());
     }
 
     // Check if entries in the existing thumbnail catalogue seems up-to-date for this directory
