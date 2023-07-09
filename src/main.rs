@@ -62,11 +62,21 @@ enum Command {
     /// the photos would not be feasible.
     ThumbCat {
         /// Filename for the thumbnail catalogue
-        #[arg(long, short, default_value="000_thumbnails.html")]
+        #[arg(long, default_value="000_thumbnails.html")]
         filename: String,
 
+        /// Force re-generation of the thumbnail catalogue even if it seems to be up-to-date (containing exactly the filenames of the
+        /// photos that are stored in the directory).
+        #[arg(long, short)]
+        force: bool,
+
+        /// Create thumbnail catalogues recursively in all subdirectories that contain at least one photo. Thumbnail catalogues will always
+        /// only preview photos within the current directory, not photos contained in a subdirectory.
+        #[arg(long, short)]
+        recursive: bool,
+
         /// Width to resize images to
-        #[arg(long, short, default_value="300")]
+        #[arg(long, default_value="300")]
         resize_width: u32
     },
 
@@ -130,8 +140,8 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
                 info!("No photos renamed.");
             }
         },
-        Command::ThumbCat { filename, resize_width } => {
-            commands::thumbcat(root_dir, subdir, &photos, filename, *resize_width)?;
+        Command::ThumbCat { filename, force, recursive, resize_width } => {
+            commands::thumbcat(root_dir, subdir, &photos, filename, *force, *recursive, *resize_width)?;
         },
         Command::Update => {
             index_changed = commands::update(root_dir, &mut index, &photos)?;

@@ -5,10 +5,11 @@ use gpx::{Gpx, GpxVersion, Waypoint, write};
 use html_escape::encode_safe;
 use log::{debug, error, info, warn};
 use rayon::prelude::*;
+use regex::Regex;
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::fs::File;
-use std::io::Write;
+use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -23,6 +24,26 @@ pub fn check(root_dir: &Path, index: &Index) -> bool {
     check_for_duplicates(&index) |
         check_hashes(root_dir, &index) |
         check_photo_naming(root_dir, &index)
+}
+
+/// Reads a thumbnail catalogue (HTML file) and extracts the filenames of all contained photos. This function is used to avoid
+/// re-generating thumbnail catalogue for directories where nothing has changed.
+fn extract_entries_from_thumbcat(html_path: &Path) -> Result<Vec<String>> {
+    let re = Regex::new(r"^<h1>(.+)</h1>$").unwrap();
+
+    let f = File::open(&html_path).with_context(|| format!("Could not open {} for reading!", html_path.display()))?;
+    let reader = BufReader::new(&f);
+    let mut entries = vec!();
+
+    for line in reader.lines() {
+        let line = line?;
+        if let Some(cap) = re.captures(&line) {
+            let entry = cap.get(1).unwrap().as_str().to_string();
+            entries.push(entry);
+        }
+    }
+
+    Ok(entries)
 }
 
 /// Show meta data from EXIF tags and the index file for image files within the current directory.
@@ -164,12 +185,41 @@ pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>
 }
 
 /// Creates a thumbnail catalogue in a HTML file (see description of thumbcat CLI command).
-pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_filename: &str, resize_width: u32) -> Result<()> {
-    // Get photos in current directory
-    let cur_photos = get_photos_in_subdir(photos, subdir, false);
+pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_filename: &str, force: bool, recursive: bool,
+    resize_width: u32) -> Result<()> {
+    let root_plus_sub_dir = root_dir.join(subdir);
 
-    // Generate HTML file
-    let html_path = root_dir.join(subdir).join(output_filename);
+    // Get photos in current directory and abort if the directory does not contain any photos
+    let cur_photos = get_photos_in_subdir(photos, subdir, false);
+    if cur_photos.is_empty() {
+        info!("No photos found in {}, skipping directory.", root_plus_sub_dir.display());
+    }
+
+    // Check if entries in the existing thumbnail catalogue seems up-to-date for this directory
+    let html_path = root_plus_sub_dir.join(output_filename);
+    if !force && html_path.is_file() {
+        let cur_tc_entries = extract_entries_from_thumbcat(&html_path)?;
+        let tc_up_to_date = cur_photos
+            .iter()
+            .map(|p| p.relative_path.strip_prefix(&subdir).unwrap().to_string_lossy().to_string())
+            .eq(cur_tc_entries.into_iter());
+        if tc_up_to_date {
+            info!("Thumbnail catalogue in {} seems up-to-date, skipping directory.", html_path.display());
+            return Ok(())
+        }
+    }
+
+    info!("Creating thumbnail catalogue in {}...", root_plus_sub_dir.display());
+
+    // Generate thumbnails
+    let thumbnails: Vec<_> = cur_photos
+        .par_iter()
+        .map(|photo| {
+            (photo.relative_path.strip_prefix(&subdir).unwrap(), photo.get_thumbnail(root_dir, resize_width))
+        })
+        .collect();
+
+    // Write HTML file
     let mut f = File::create(&html_path).with_context(|| format!("Could not write to {}!", html_path.display()))?;
     write!(&mut f, "<!DOCTYPE html>\n")?;
     write!(&mut f, "<html lang=\"en\">\n")?;
@@ -180,19 +230,12 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
     write!(&mut f, "</head>\n")?;
     write!(&mut f, "<body>\n")?;
 
-    let thumbnails: Vec<_> = cur_photos
-        .par_iter()
-        .map(|photo| {
-            (photo.relative_path.strip_prefix(&subdir).unwrap(), photo.get_thumbnail(root_dir, resize_width))
-        })
-        .collect();
-
     for (photo_path, data) in thumbnails {
         write!(&mut f, "<h1>{}</h1>\n", &photo_path.display())?;
 
         match data {
-            Ok(bytes) => { write!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" style=\"width: 100%\" /></p>", STANDARD_NO_PAD.encode(&bytes))?; },
-            Err(e) => { write!(&mut f, "<p>{}</p>", encode_safe(&e.to_string()))?; }
+            Ok(bytes) => { write!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" style=\"width: 100%\" /></p>\n", STANDARD_NO_PAD.encode(&bytes))?; },
+            Err(e) => { write!(&mut f, "<p>{}</p>\n", encode_safe(&e.to_string()))?; }
         }
     }
 
