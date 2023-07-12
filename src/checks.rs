@@ -10,9 +10,9 @@ pub fn check_for_duplicates(index: &Index) -> bool {
     let mut hashes_to_files: HashMap<&str, Vec<&IndexEntry>> = HashMap::new();
     for photo in index.photos.iter() {
         if let Some(list) = hashes_to_files.get_mut(photo.filehash.as_str()) {
-            list.push(&photo);
+            list.push(photo);
         } else {
-            hashes_to_files.insert(&photo.filehash, vec!(&photo));
+            hashes_to_files.insert(&photo.filehash, vec!(photo));
         }
     }
 

@@ -72,11 +72,11 @@ impl Photo {
 
 /// Hashes the given file and returns the hash as a hex-encoded string.
 pub fn calc_photo_hash(filepath: &PathBuf) -> Result<String> {
-    let mut file = File::open(&filepath).with_context(|| format!("Could not open {} for hashing!", filepath.display()))?;
+    let mut file = File::open(filepath).with_context(|| format!("Could not open {} for hashing!", filepath.display()))?;
     let mut hasher = Sha256::new();
     copy(&mut file, &mut hasher)?;
     let hash = hasher.finalize();
-    Ok(encode(&hash))
+    Ok(encode(hash))
 }
 
 /// Determines the "correct" filename for a given photo, using the provided user config with its file naming scheme.
@@ -130,7 +130,7 @@ pub fn get_photos_in_subdir(photos: &[Photo], subdir: &Path, recursive: bool) ->
 }
 
 pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
-    let file = File::open(&filepath)
+    let file = File::open(filepath)
         .with_context(|| format!("Could not open {} for reading EXIF data!", filepath.display()))?;
     let mut bufreader = BufReader::new(&file);
     let exifreader = exif::Reader::new();
@@ -229,18 +229,18 @@ pub fn read_exif_data(filepath: &PathBuf) -> Result<PhotoMetaData> {
     let orientation_value = exif.get_field(exif::Tag::Orientation, exif::In::PRIMARY).map(|e| &e.value);
     let orientation = if let Some(exif::Value::Short(v)) = orientation_value {
         let v = v.first().context("EXIF Orientation has no entry!")?;
-        Some(v.clone())
+        Some(*v)
     } else {
         None
     };
 
     Ok(PhotoMetaData {
-        model: model,
-        make: make,
+        model,
+        make,
         timestamp_local: timestamp,
-        location: location,
-        altitude: altitude,
-        orientation: orientation
+        location,
+        altitude,
+        orientation
     })
 }
 

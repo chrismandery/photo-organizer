@@ -20,9 +20,9 @@ use crate::index::{Index, IndexEntry};
 pub fn check(root_dir: &Path, index: &Index) -> bool {
     // Run checks without short-circuit evaluation (i.e., always run all checks)
     // TODO: Should be configurable later which checks should be run
-    check_for_duplicates(&index) |
-        check_hashes(root_dir, &index) |
-        check_photo_naming(root_dir, &index)
+    check_for_duplicates(index) |
+        check_hashes(root_dir, index) |
+        check_photo_naming(root_dir, index)
 }
 
 /// Reads a thumbnail catalogue (HTML file) and extracts the filenames of all contained photos. This function is used to avoid
@@ -30,7 +30,7 @@ pub fn check(root_dir: &Path, index: &Index) -> bool {
 fn extract_entries_from_thumbcat(html_path: &Path) -> Result<Vec<String>> {
     let re = Regex::new(r"^<h1>(.+)</h1>$").unwrap();
 
-    let f = File::open(&html_path).with_context(|| format!("Could not open {} for reading!", html_path.display()))?;
+    let f = File::open(html_path).with_context(|| format!("Could not open {} for reading!", html_path.display()))?;
     let reader = BufReader::new(&f);
     let mut entries = vec!();
 
@@ -46,7 +46,7 @@ fn extract_entries_from_thumbcat(html_path: &Path) -> Result<Vec<String>> {
 }
 
 /// Show meta data from EXIF tags and the index file for image files within the current directory.
-pub fn list(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool) -> Result<()> {
+pub fn list(root_dir: &Path, subdir: &Path, index: &Index, photos: &[Photo], recursive: bool) -> Result<()> {
     let cur_photos = get_photos_in_subdir(photos, subdir, recursive);
 
     // Create HashMap from index for efficient lookup
@@ -83,12 +83,14 @@ pub fn list(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, 
 }
 
 /// Exports the GPS locations of the image files within the current directory in the GPX format and shows them on a map
-pub fn map(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, recursive: bool, command: Option<&str>) -> Result<()> {
+pub fn map(root_dir: &Path, subdir: &Path, photos: &[Photo], recursive: bool, command: Option<&str>) -> Result<()> {
     let cur_photos = get_photos_in_subdir(photos, subdir, recursive);
 
     // Create GPX data structure for writing
-    let mut gpx_data : Gpx = Default::default();
-    gpx_data.version = GpxVersion::Gpx11;
+    let mut gpx_data = Gpx {
+        version: GpxVersion::Gpx11,
+        ..Default::default()
+    };
 
     for photo in cur_photos {
         let path = photo.relative_path;
@@ -116,7 +118,7 @@ pub fn map(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, recursive: bool,
 
     // Write GPX data to file
     // TODO: Use proper temporary file instead of hardcoded one
-    let file = File::create("/tmp/photo_locations.gpx").with_context(|| format!("Could not open GPX file for writing!"))?;
+    let file = File::create("/tmp/photo_locations.gpx").context("Could not open GPX file for writing!")?;
     write(&gpx_data, &file)?;
     file.sync_all()?;
     drop(file);
@@ -134,7 +136,7 @@ pub fn map(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, recursive: bool,
 
 /// Renames the files in the given directory (and potentially subdirectories) to follow the naming scheme configured in the index. Returns
 /// how many files have been renamed by the function.
-pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>, recursive: bool, dry_run: bool) -> Result<usize> {
+pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &[Photo], recursive: bool, dry_run: bool) -> Result<usize> {
     // TODO: Maybe ask for additional confirmation? (if not in dry-run mode)
     let cur_photos = get_photos_in_subdir(photos, subdir, recursive);
 
@@ -151,27 +153,25 @@ pub fn rename(root_dir: &Path, subdir: &Path, index: &Index, photos: &Vec<Photo>
                 // Rename is necessary if a photo does not already have its canonical name
                 if cur_name == canonical_name {
                     debug!("{}: Rename not necessary", filepath.display());
+                } else if dry_run {
+                    info!("{}: Would rename file to {} (running in dry-run mode)", filepath.display(), canonical_name.display());
                 } else {
-                    if dry_run {
-                        info!("{}: Would rename file to {} (running in dry-run mode)", filepath.display(), canonical_name.display());
-                    } else {
-                        info!("{}: Renaming file to {}", filepath.display(), canonical_name.display());
+                    info!("{}: Renaming file to {}", filepath.display(), canonical_name.display());
 
-                        let full_new_path = root_dir
-                            .join(filepath.parent().expect("Could not get directory component of photo path!"))
-                            .join(canonical_name);
+                    let full_new_path = root_dir
+                        .join(filepath.parent().expect("Could not get directory component of photo path!"))
+                        .join(canonical_name);
 
-                        // Check if file already exists and refuse to overwrite already existing file
-                        // Note: Since we just check before rename here, this is not free of race conditions (good enough for now though)
-                        // See: https://internals.rust-lang.org/t/rename-file-without-overriding-existing-target/17637
-                        if full_new_path.exists() {
-                            error!("Cannot rename: Target already exists.");
-                            continue;
-                        }
-
-                        fs::rename(full_old_path, full_new_path)?;
-                        renamed_photo_count += 1;
+                    // Check if file already exists and refuse to overwrite already existing file
+                    // Note: Since we just check before rename here, this is not free of race conditions (good enough for now though)
+                    // See: https://internals.rust-lang.org/t/rename-file-without-overriding-existing-target/17637
+                    if full_new_path.exists() {
+                        error!("Cannot rename: Target already exists.");
+                        continue;
                     }
+
+                    fs::rename(full_old_path, full_new_path)?;
+                    renamed_photo_count += 1;
                 }
             },
             Err(e) => {
@@ -221,7 +221,7 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
         let cur_tc_entries = extract_entries_from_thumbcat(&html_path)?;
         let tc_up_to_date = cur_photos
             .iter()
-            .map(|p| p.relative_path.strip_prefix(&subdir).unwrap().to_string_lossy().to_string())
+            .map(|p| p.relative_path.strip_prefix(subdir).unwrap().to_string_lossy().to_string())
             .eq(cur_tc_entries.into_iter());
         if tc_up_to_date {
             info!("Thumbnail catalogue in {} seems up-to-date, skipping directory.", html_path.display());
@@ -235,32 +235,32 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
     let thumbnails: Vec<_> = cur_photos
         .par_iter()
         .map(|photo| {
-            (photo.relative_path.strip_prefix(&subdir).unwrap(), photo.get_thumbnail(root_dir, resize_width))
+            (photo.relative_path.strip_prefix(subdir).unwrap(), photo.get_thumbnail(root_dir, resize_width))
         })
         .collect();
 
     // Write HTML file
     let mut f = File::create(&html_path).with_context(|| format!("Could not write to {}!", html_path.display()))?;
-    write!(&mut f, "<!DOCTYPE html>\n")?;
-    write!(&mut f, "<html lang=\"en\">\n")?;
-    write!(&mut f, "<head>\n")?;
-    write!(&mut f, "<meta charset=\"utf-8\">\n")?;
-    write!(&mut f, "<title>Thumbnail Catalogue for Directory {}</title>\n", encode_safe(&subdir.display().to_string()))?;
-    write!(&mut f, "<style>h1 {{ font-size: large }}</style>\n")?;
-    write!(&mut f, "</head>\n")?;
-    write!(&mut f, "<body>\n")?;
+    writeln!(&mut f, "<!DOCTYPE html>")?;
+    writeln!(&mut f, "<html lang=\"en\">")?;
+    writeln!(&mut f, "<head>")?;
+    writeln!(&mut f, "<meta charset=\"utf-8\">")?;
+    writeln!(&mut f, "<title>Thumbnail Catalogue for Directory {}</title>", encode_safe(&subdir.display().to_string()))?;
+    writeln!(&mut f, "<style>h1 {{ font-size: large }}</style>")?;
+    writeln!(&mut f, "</head>")?;
+    writeln!(&mut f, "<body>")?;
 
     for (photo_path, data) in thumbnails {
-        write!(&mut f, "<h1>{}</h1>\n", &photo_path.display())?;
+        writeln!(&mut f, "<h1>{}</h1>", &photo_path.display())?;
 
         match data {
-            Ok(bytes) => { write!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" style=\"width: 100%\" /></p>\n", STANDARD_NO_PAD.encode(&bytes))?; },
-            Err(e) => { write!(&mut f, "<p>{}</p>\n", encode_safe(&e.to_string()))?; }
+            Ok(bytes) => { writeln!(&mut f, "<p><img src=\"data:image/jpeg;base64,{}\" style=\"width: 100%\" /></p>", STANDARD_NO_PAD.encode(&bytes))?; },
+            Err(e) => { writeln!(&mut f, "<p>{}</p>", encode_safe(&e.to_string()))?; }
         }
     }
 
-    write!(&mut f, "</body>\n")?;
-    write!(&mut f, "</html>\n")?;
+    writeln!(&mut f, "</body>")?;
+    writeln!(&mut f, "</html>")?;
 
     info!("File {} generated successfully.", html_path.display());
 
@@ -269,7 +269,7 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
 
 /// Updates the index entries with the actual stored photos, detecting new, renamed and deleted photos. Returns whether the index has been
 /// changed by the function.
-pub fn update(root_dir: &Path, index: &mut Index, photos: &Vec<Photo>) -> Result<bool> {
+pub fn update(root_dir: &Path, index: &mut Index, photos: &[Photo]) -> Result<bool> {
     // Create index data structures for faster matching of index and photos
     let index_set: HashSet<PathBuf> = index.photos.iter().map(|p| p.filepath.clone()).collect();
     let photos_set: HashSet<PathBuf> = photos.iter().map(|p| p.relative_path.clone()).collect();

@@ -107,7 +107,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
                 warn!("Index file is not up-to-date! Consider running \"update\" before \"check\" to get accurate results.");
             }
 
-            if !commands::check(root_dir, &mut index) {
+            if !commands::check(root_dir, &index) {
                 exit_code = ExitCode::FAILURE;
             }
         },
