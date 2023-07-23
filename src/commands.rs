@@ -208,16 +208,17 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
         }
     }
 
-    // Get photos in current directory and abort if the directory does not contain any photos
+    // Get photos in current directory
     let cur_photos = get_photos_in_subdir(photos, subdir, false);
-    if cur_photos.is_empty() {
-        info!("No photos found in {}, skipping directory.", root_plus_sub_dir.display());
-        return Ok(());
-    }
 
     // Check if entries in the existing thumbnail catalogue seems up-to-date for this directory
     let html_path = root_plus_sub_dir.join(output_filename);
     if !force && html_path.is_file() {
+        // Print warning if we found a thumbnail catalogue in a directory without photos
+        if cur_photos.is_empty() {
+            warn!("Existing thumbnail catalogue found in directory without photos: {}", root_plus_sub_dir.display());
+        }
+
         let cur_tc_entries = extract_entries_from_thumbcat(&html_path)?;
         let tc_up_to_date = cur_photos
             .iter()
@@ -227,6 +228,12 @@ pub fn thumbcat(root_dir: &Path, subdir: &Path, photos: &Vec<Photo>, output_file
             info!("Thumbnail catalogue in {} seems up-to-date, skipping directory.", html_path.display());
             return Ok(())
         }
+    }
+
+    // Abort if the directory does not contain any photos
+    if cur_photos.is_empty() {
+        info!("No photos found in {}, skipping directory.", root_plus_sub_dir.display());
+        return Ok(());
     }
 
     info!("Creating thumbnail catalogue in {}...", root_plus_sub_dir.display());
