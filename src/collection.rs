@@ -35,29 +35,35 @@ impl Photo {
 
         // Read image and EXIF tags for orientation (see below)
         let mut img: image::DynamicImage = image::open(&path).with_context(|| format!("Could not read image from {}!", path.display()))?;
-        let exif_data = read_exif_data(&path)?;
-        debug!("Read {}: Image has dimensions {:?} and orientation {}.", path.display(), img.dimensions(), exif_data.orientation.unwrap_or(1));
+        match read_exif_data(&path) {
+            Ok(exif_data) => {
+                debug!("Read {}: Image has dimensions {:?} and orientation {}.", path.display(), img.dimensions(), exif_data.orientation.unwrap_or(1));
 
-        // Read orientation from EXIF tag
-        // Note: The image crate does not consider the orientation when reading the image (see, e.g.,
-        //       https://github.com/image-rs/image/issues/1045). Hence, we are manually flipping/rotation the read image here to get an
-        //       unrotated representation before generating the thumbnail.
-        if let Some(orientation) = exif_data.orientation {
-            match orientation {
-                1 => { /* orientation already correct */},
-                2 => { img = img.fliph(); },
-                3 => { img = img.rotate180(); },
-                4 => { img = img.flipv(); },
-                5 => { img = img.rotate90().fliph(); },
-                6 => { img = img.rotate90(); },
-                7 => { img = img.rotate270().fliph(); },
-                8 => { img = img.rotate270(); },
-                _ => { warn!("Invalid EXIF rotation value {} ignored! (valid values are 1 to 8)", orientation); }
+                // Read orientation from EXIF tag
+                // Note: The image crate does not consider the orientation when reading the image (see, e.g.,
+                //       https://github.com/image-rs/image/issues/1045). Hence, we are manually flipping/rotation the read image here to get an
+                //       unrotated representation before generating the thumbnail.
+                if let Some(orientation) = exif_data.orientation {
+                    match orientation {
+                        1 => { /* orientation already correct */},
+                        2 => { img = img.fliph(); },
+                        3 => { img = img.rotate180(); },
+                        4 => { img = img.flipv(); },
+                        5 => { img = img.rotate90().fliph(); },
+                        6 => { img = img.rotate90(); },
+                        7 => { img = img.rotate270().fliph(); },
+                        8 => { img = img.rotate270(); },
+                        _ => { warn!("Invalid EXIF rotation value {} ignored! (valid values are 1 to 8)", orientation); }
+                    }
+                }
+
+                // Resize image to given width
+                img = img.resize(max_width, 10000, image::imageops::FilterType::Triangle);
+            },
+            Err(e) => {
+                debug!("Cannot determine rotation of image {}, error was: {}", path.display(), e);
             }
         }
-
-        // Resize image to given width
-        img = img.resize(max_width, 10000, image::imageops::FilterType::Triangle);
 
         // Save image
         let mut bytes: Vec<u8> = Vec::new();
