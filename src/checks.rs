@@ -12,7 +12,7 @@ pub fn check_for_duplicates(index: &Index) -> bool {
         if let Some(list) = hashes_to_files.get_mut(photo.filehash.as_str()) {
             list.push(photo);
         } else {
-            hashes_to_files.insert(&photo.filehash, vec!(photo));
+            hashes_to_files.insert(&photo.filehash, vec![photo]);
         }
     }
 
@@ -41,12 +41,21 @@ pub fn check_hashes(root_dir: &Path, index: &Index) -> bool {
             Ok(actual_hash) => {
                 if photo.filehash != actual_hash {
                     found_deviation = true;
-                    warn!("{}: Hash does not match (recorded {} but was {})!", photo.filepath.display(), photo.filehash, actual_hash);
+                    warn!(
+                        "{}: Hash does not match (recorded {} but was {})!",
+                        photo.filepath.display(),
+                        photo.filehash,
+                        actual_hash
+                    );
                 }
-            },
+            }
             Err(e) => {
                 found_deviation = true;
-                warn!("Skipping file {}: Could not re-hash the file. The error was: {}", photo.filepath.display(), e);
+                warn!(
+                    "Skipping file {}: Could not re-hash the file. The error was: {}",
+                    photo.filepath.display(),
+                    e
+                );
             }
         }
     }
@@ -66,10 +75,14 @@ pub fn check_photo_naming(root_dir: &Path, index: &Index) -> bool {
                 if cfn != photo.filepath.file_name().unwrap_or_default().to_string_lossy() {
                     warn!("{}: Should be named {}", photo.filepath.display(), cfn);
                 }
-            },
+            }
             Err(e) => {
                 found_misnamed_file = true;
-                warn!("Error while trying to determine correct filename for {}: {}", photo.filepath.display(), e);
+                warn!(
+                    "Error while trying to determine correct filename for {}: {}",
+                    photo.filepath.display(),
+                    e
+                );
             }
         }
     }

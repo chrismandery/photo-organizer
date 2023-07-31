@@ -1,0 +1,5 @@
+max_width = 120
+
+# disabled, still unstable
+# comment_width = 120
+# wrap_comments = true

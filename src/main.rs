@@ -6,7 +6,7 @@ use std::path::Path;
 use std::process::ExitCode;
 
 use collection::scan_photo_collection;
-use index::{Index, check_index_file_is_git_versioned, get_index_root_and_subdir, read_index_file, write_index_file};
+use index::{check_index_file_is_git_versioned, get_index_root_and_subdir, read_index_file, write_index_file, Index};
 
 mod checks;
 mod collection;
@@ -24,7 +24,7 @@ struct Args {
     dry_run: bool,
 
     #[command(subcommand)]
-    command: Command
+    command: Command,
 }
 
 #[derive(Debug, PartialEq, Subcommand)]
@@ -38,23 +38,23 @@ enum Command {
     /// Show meta data from EXIF tags and the index file for image files within the current directory
     List {
         #[arg(long, short)]
-        recursive: bool
+        recursive: bool,
     },
 
     /// Exports the GPS locations of the image files within the current directory in the GPX format and shows them on a map
     Map {
         /// Command to run for visualizing the GPX file (if empty, just save the GPX file)
-        #[arg(long, short, default_value="gpxsee")]
+        #[arg(long, short, default_value = "gpxsee")]
         command: Option<String>,
 
         #[arg(long, short)]
-        recursive: bool
+        recursive: bool,
     },
 
     /// Renames the files in the current directory (and potentially subdirectories) to follow the configured naming scheme
     Rename {
         #[arg(long, short)]
-        recursive: bool
+        recursive: bool,
     },
 
     /// Creates a thumbnail catalogue that shows all photos within the current directory in a size-optimized thumbnail format in a
@@ -62,7 +62,7 @@ enum Command {
     /// the photos would not be feasible.
     ThumbCat {
         /// Filename for the thumbnail catalogue
-        #[arg(long, default_value="000_thumbnails.html")]
+        #[arg(long, default_value = "000_thumbnails.html")]
         filename: String,
 
         /// Force re-generation of the thumbnail catalogue even if it seems to be up-to-date (containing exactly the filenames of the
@@ -76,12 +76,12 @@ enum Command {
         recursive: bool,
 
         /// Width to resize images to
-        #[arg(long, default_value="300")]
-        resize_width: u32
+        #[arg(long, default_value = "300")]
+        resize_width: u32,
     },
 
     /// Update index file adding, renaming and deleting entries as image files have been changed
-    Update
+    Update,
 }
 
 /// Handles execution of all commands except the init command.
@@ -93,7 +93,10 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
 
     // Check whether the index file is versioned using Git and hint user to do so if that is not the case
     if args.command != Command::Init && !check_index_file_is_git_versioned(root_dir) {
-        warn!("Warning: Index file in {} does not seem to be versioned using Git.", root_dir.display());
+        warn!(
+            "Warning: Index file in {} does not seem to be versioned using Git.",
+            root_dir.display()
+        );
         warn!("It is recommended to setting up a Git repository for tracking changes of the index file.");
     }
 
@@ -110,8 +113,8 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
             if !commands::check(root_dir, &index) {
                 exit_code = ExitCode::FAILURE;
             }
-        },
-        Command::Init => {},  // handled in main()
+        }
+        Command::Init => {} // handled in main()
         Command::List { recursive } => {
             // Print warning is index is not up to date
             let index_not_up_to_date = commands::update(root_dir, &mut index.clone(), &photos)?;
@@ -120,7 +123,7 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
             }
 
             commands::list(root_dir, subdir, &index, &photos, *recursive)?;
-        },
+        }
         Command::Map { command, recursive } => {
             // TODO: Check index up-to-date (once refactored)
             commands::map(root_dir, subdir, &photos, *recursive, command.as_deref())?;
@@ -135,14 +138,22 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
             let renamed_file_count = commands::rename(root_dir, subdir, &index, &photos, *recursive, args.dry_run)?;
 
             if renamed_file_count > 0 {
-                info!("{} photos have been renamed. Run \"update\" to update the index file.", renamed_file_count);
+                info!(
+                    "{} photos have been renamed. Run \"update\" to update the index file.",
+                    renamed_file_count
+                );
             } else {
                 info!("No photos renamed.");
             }
-        },
-        Command::ThumbCat { filename, force, recursive, resize_width } => {
+        }
+        Command::ThumbCat {
+            filename,
+            force,
+            recursive,
+            resize_width,
+        } => {
             commands::thumbcat(root_dir, subdir, &photos, filename, *force, *recursive, *resize_width)?;
-        },
+        }
         Command::Update => {
             index_changed = commands::update(root_dir, &mut index, &photos)?;
         }
@@ -150,7 +161,10 @@ fn handle_command(args: &Args, root_dir: &Path, subdir: &Path) -> Result<ExitCod
 
     if index_changed {
         if args.dry_run {
-            info!("Index file for {} would have been updated but changes not written (running in dry-run mode).", root_dir.display());
+            info!(
+                "Index file for {} would have been updated but changes not written (running in dry-run mode).",
+                root_dir.display()
+            );
         } else {
             write_index_file(root_dir, &mut index)?;
             info!("Index file for {} has been updated.", root_dir.display());
@@ -180,9 +194,12 @@ fn main() -> Result<ExitCode> {
         match found_collection {
             Some((ref root_dir, _)) => {
                 error!("Cannot initialize a new photo collection here!");
-                error!("This directory is already within the collection at: {}", root_dir.display());
+                error!(
+                    "This directory is already within the collection at: {}",
+                    root_dir.display()
+                );
                 ExitCode::FAILURE
-            },
+            }
             None => {
                 let wd = current_dir()?;
                 write_index_file(&wd, &mut Index::default())?;
