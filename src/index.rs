@@ -53,7 +53,7 @@ pub fn check_index_file_is_git_versioned(root_dir: &Path) -> bool {
         Ok(output) => {
             output.status.success()
                 && from_utf8(&output.stdout)
-                    .map(|s| s == String::from(INDEX_FILE_NAME) + "\n")
+                    .map(|s| s.split('\n').any(|filename| filename == INDEX_FILE_NAME))
                     .unwrap_or(false)
         }
         Err(_) => false,
